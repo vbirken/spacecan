@@ -161,6 +161,27 @@
       const scoreEl = document.querySelector("#score");
       const healthEl = document.querySelector("#health");
       const messageEl = document.querySelector("#message");
+      const shipSprites = ["player-1.png", "player-2.png", "player-3.png"].map((src) => {
+        const image = new Image();
+        image.src = src;
+        return image;
+      });
+      const pillarBodyImage = new Image();
+      const pillarCapImage = new Image();
+      pillarBodyImage.src = "pillar-body.png";
+      pillarCapImage.src = "pillar-cap.png";
+      const cloudImage = new Image();
+      const skyBackgroundImage = new Image();
+      const starImage = new Image();
+      const healthPowerupImage = new Image();
+      const shieldPowerupImage = new Image();
+      const groundTileImage = new Image();
+      cloudImage.src = "cloud.png";
+      skyBackgroundImage.src = "sky-background.png";
+      starImage.src = "star.png";
+      healthPowerupImage.src = "powerup-health.png";
+      shieldPowerupImage.src = "powerup-shield.png";
+      groundTileImage.src = "ground-tile.png";
 
       const game = {
         width: 0,
@@ -168,13 +189,16 @@
         state: "ready",
         score: 0,
         health: 3,
+        invincibleTimer: 0,
         best: Number(localStorage.getItem("skyDodgerBest") || 0),
         speed: 220,
         spawnTimer: 0,
+        powerupTimer: 3.2,
         groundHeight: 54,
         clouds: [],
         stars: [],
         pillars: [],
+        powerups: [],
         ship: {
           x: 0,
           y: 0,
@@ -224,13 +248,17 @@
         game.state = "ready";
         game.score = 0;
         game.health = 3;
+        game.invincibleTimer = 0;
         game.speed = 220;
         game.spawnTimer = 0;
+        game.powerupTimer = 3.2;
         game.pillars = [];
+        game.powerups = [];
         game.ship.y = game.height * 0.42;
         game.ship.velocity = 0;
         game.ship.rotation = 0;
         scoreEl.textContent = "0";
+        healthEl.textContent = String(game.health);
         if (showMessage) {
           messageEl.classList.remove("hidden");
           messageEl.querySelector("strong").textContent = "Sky Dodger";
@@ -271,6 +299,16 @@
         });
       }
 
+      function spawnPowerup() {
+        const radius = 16;
+        game.powerups.push({
+          x: game.width + radius,
+          y: 85 + Math.random() * Math.max(1, game.height - game.groundHeight - 170),
+          radius,
+          type: Math.random() < 0.55 ? "health" : "shield"
+        });
+      }
+
       function endGame() {
         if (game.state !== "playing") return;
         game.state = "over";
@@ -297,10 +335,17 @@
         game.ship.rotation = Math.max(-0.65, Math.min(1.1, game.ship.velocity / 480));
         game.speed += delta * 3.5;
         game.spawnTimer -= delta;
+        game.powerupTimer -= delta;
+        game.invincibleTimer = Math.max(0, game.invincibleTimer - delta);
 
         if (game.spawnTimer <= 0) {
           spawnPillar();
           game.spawnTimer = pillarSpacing;
+        }
+
+        if (game.powerupTimer <= 0) {
+          spawnPowerup();
+          game.powerupTimer = 4 + Math.random() * 2.5;
         }
 
         for (const pillar of game.pillars) {
@@ -311,10 +356,43 @@
             scoreEl.textContent = String(game.score);
           }
         }
+
+        for (const powerup of game.powerups) {
+          powerup.x -= game.speed * delta;
+        }
+
         healthEl.textContent = String(game.health);
 
         game.pillars = game.pillars.filter((pillar) => pillar.x > -pillarWidth - 20);
+        game.powerups = game.powerups.filter((powerup) => powerup.x > -powerup.radius - 20);
+        checkPowerups();
         checkCollisions();
+      }
+
+      function checkPowerups() {
+        for (const powerup of game.powerups) {
+          const dx = game.ship.x - powerup.x;
+          const dy = game.ship.y - powerup.y;
+          const touching = Math.hypot(dx, dy) < game.ship.radius + powerup.radius;
+
+          if (touching) {
+            applyPowerup(powerup);
+            powerup.collected = true;
+          }
+        }
+
+        game.powerups = game.powerups.filter((powerup) => !powerup.collected);
+      }
+
+      function applyPowerup(powerup) {
+        if (powerup.type === "health") {
+          game.health = Math.min(game.health + 1, 5);
+          healthEl.textContent = String(game.health);
+        }
+
+        if (powerup.type === "shield") {
+          game.invincibleTimer = 5;
+        }
       }
 
       function checkCollisions() {
@@ -328,7 +406,7 @@
         for (const pillar of game.pillars) {
           const nearX = ship.x + ship.radius > pillar.x && ship.x - ship.radius < pillar.x + pillarWidth;
           const inGap = ship.y - ship.radius > pillar.gapTop && ship.y + ship.radius < pillar.gapTop + pillarGap;
-          if (nearX && !inGap && !pillar.hit) {
+          if (nearX && !inGap && !pillar.hit && game.invincibleTimer <= 0) {
             pillar.hit = true;
             game.health = game.health - 1;
             healthEl.textContent = String(game.health);
@@ -344,33 +422,48 @@
         ctx.clearRect(0, 0, game.width, game.height);
         drawSky();
         drawPillars();
+        drawPowerups();
         drawGround();
         drawShip();
       }
 
       function drawSky() {
-        const gradient = ctx.createLinearGradient(0, 0, 0, game.height);
-        gradient.addColorStop(0, "#071a32");
-        gradient.addColorStop(0.56, "#14506f");
-        gradient.addColorStop(1, "#153d42");
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, game.width, game.height);
+        if (skyBackgroundImage.complete) {
+          ctx.drawImage(skyBackgroundImage, 0, 0, game.width, game.height);
+        } else {
+          const gradient = ctx.createLinearGradient(0, 0, 0, game.height);
+          gradient.addColorStop(0, "#071a32");
+          gradient.addColorStop(0.56, "#14506f");
+          gradient.addColorStop(1, "#153d42");
+          ctx.fillStyle = gradient;
+          ctx.fillRect(0, 0, game.width, game.height);
+        }
 
         for (const star of game.stars) {
-          ctx.fillStyle = `rgba(255, 244, 191, ${star.alpha})`;
-          ctx.fillRect(star.x, star.y, 2, 2);
+          ctx.globalAlpha = star.alpha;
+          if (starImage.complete) {
+            ctx.drawImage(starImage, star.x - 3, star.y - 3, 8, 8);
+          } else {
+            ctx.fillStyle = "#fff4bf";
+            ctx.fillRect(star.x, star.y, 2, 2);
+          }
+          ctx.globalAlpha = 1;
         }
 
         for (const cloud of game.clouds) {
           ctx.save();
           ctx.translate(cloud.x, cloud.y);
           ctx.scale(cloud.scale, cloud.scale);
-          ctx.fillStyle = "rgba(222, 242, 255, 0.18)";
-          ctx.beginPath();
-          ctx.ellipse(0, 18, 42, 16, 0, 0, Math.PI * 2);
-          ctx.ellipse(34, 14, 34, 14, 0, 0, Math.PI * 2);
-          ctx.ellipse(-31, 17, 29, 13, 0, 0, Math.PI * 2);
-          ctx.fill();
+          if (cloudImage.complete) {
+            ctx.drawImage(cloudImage, -55, -8, 150, 58);
+          } else {
+            ctx.fillStyle = "rgba(222, 242, 255, 0.18)";
+            ctx.beginPath();
+            ctx.ellipse(0, 18, 42, 16, 0, 0, Math.PI * 2);
+            ctx.ellipse(34, 14, 34, 14, 0, 0, Math.PI * 2);
+            ctx.ellipse(-31, 17, 29, 13, 0, 0, Math.PI * 2);
+            ctx.fill();
+          }
           ctx.restore();
         }
       }
@@ -384,6 +477,15 @@
       }
 
       function drawPillarSegment(x, y, width, height, capBottom) {
+        const capHeight = 22;
+        const capY = capBottom ? y + height - capHeight : y;
+
+        if (pillarBodyImage.complete && pillarCapImage.complete) {
+          ctx.drawImage(pillarBodyImage, x, y, width, height);
+          ctx.drawImage(pillarCapImage, x - 8, capY, width + 16, capHeight);
+          return;
+        }
+
         const grad = ctx.createLinearGradient(x, 0, x + width, 0);
         grad.addColorStop(0, "#1f8f79");
         grad.addColorStop(0.5, "#48c497");
@@ -396,64 +498,103 @@
         ctx.fillStyle = "rgba(0, 0, 0, 0.18)";
         ctx.fillRect(x + width - 16, y, 8, height);
 
-        const capY = capBottom ? y + height - 22 : y;
         ctx.fillStyle = "#5ad0a1";
-        ctx.fillRect(x - 8, capY, width + 16, 22);
+        ctx.fillRect(x - 8, capY, width + 16, capHeight);
         ctx.fillStyle = "rgba(0, 0, 0, 0.16)";
         ctx.fillRect(x - 8, capY + 17, width + 16, 5);
       }
 
+      function drawPowerups() {
+        const pulse = 1 + Math.sin(performance.now() / 160) * 0.08;
+
+        for (const powerup of game.powerups) {
+          ctx.save();
+          ctx.translate(powerup.x, powerup.y);
+          ctx.scale(pulse, pulse);
+
+          const image = powerup.type === "health" ? healthPowerupImage : shieldPowerupImage;
+          if (image.complete) {
+            ctx.drawImage(image, -powerup.radius - 8, -powerup.radius - 8, (powerup.radius + 8) * 2, (powerup.radius + 8) * 2);
+          } else if (powerup.type === "health") {
+            ctx.fillStyle = "#ff5c7a";
+            ctx.beginPath();
+            ctx.arc(0, 0, powerup.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(-4, -10, 8, 20);
+            ctx.fillRect(-10, -4, 20, 8);
+          }
+
+          if (!image.complete && powerup.type === "shield") {
+            ctx.fillStyle = "rgba(117, 215, 255, 0.22)";
+            ctx.beginPath();
+            ctx.arc(0, 0, powerup.radius + 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = "#75d7ff";
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.arc(0, 0, powerup.radius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.fillStyle = "#d9f7ff";
+            ctx.beginPath();
+            ctx.arc(0, 0, 4, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          ctx.restore();
+        }
+      }
+
       function drawGround() {
         const y = game.height - game.groundHeight;
-        ctx.fillStyle = "#163326";
-        ctx.fillRect(0, y, game.width, game.groundHeight);
-        ctx.fillStyle = "#2f9b70";
-        ctx.fillRect(0, y, game.width, 9);
-        ctx.fillStyle = "rgba(255, 255, 255, 0.14)";
-        for (let x = -40; x < game.width + 80; x += 48) {
-          ctx.fillRect((x - (performance.now() / 18) % 48), y + 18, 24, 3);
+        if (groundTileImage.complete) {
+          const offset = (performance.now() / 18) % 96;
+          for (let x = -96 - offset; x < game.width + 96; x += 96) {
+            ctx.drawImage(groundTileImage, x, y, 96, game.groundHeight);
+          }
+        } else {
+          ctx.fillStyle = "#163326";
+          ctx.fillRect(0, y, game.width, game.groundHeight);
+          ctx.fillStyle = "#2f9b70";
+          ctx.fillRect(0, y, game.width, 9);
+          ctx.fillStyle = "rgba(255, 255, 255, 0.14)";
+          for (let x = -40; x < game.width + 80; x += 48) {
+            ctx.fillRect((x - (performance.now() / 18) % 48), y + 18, 24, 3);
+          }
         }
       }
 
       function drawShip() {
         const { x, y, radius, rotation } = game.ship;
+        const frame = Math.floor(performance.now() / 120) % shipSprites.length;
+        const sprite = shipSprites[frame];
+        const spriteWidth = radius * 3.7;
+        const spriteHeight = radius * 2.55;
         ctx.save();
         ctx.translate(x, y);
         ctx.rotate(rotation);
+
+        if (game.invincibleTimer > 0) {
+          ctx.strokeStyle = "rgba(117, 215, 255, 0.86)";
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.arc(0, 0, radius + 12, 0, Math.PI * 2);
+          ctx.stroke();
+        }
 
         ctx.fillStyle = "rgba(0, 0, 0, 0.24)";
         ctx.beginPath();
         ctx.ellipse(2, 22, 21, 7, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.fillStyle = varColor("--accent");
-        ctx.beginPath();
-        ctx.moveTo(radius + 16, 0);
-        ctx.lineTo(-radius, -14);
-        ctx.lineTo(-radius + 6, 0);
-        ctx.lineTo(-radius, 14);
-        ctx.closePath();
-        ctx.fill();
-
-        ctx.fillStyle = "#ffffff";
-        ctx.beginPath();
-        ctx.arc(4, -3, 6, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = game.state === "playing" ? "#ff7a47" : "#6fa8ff";
-        ctx.beginPath();
-        ctx.moveTo(-radius - 5, 0);
-        ctx.lineTo(-radius - 24, -8);
-        ctx.lineTo(-radius - 17, 0);
-        ctx.lineTo(-radius - 24, 8);
-        ctx.closePath();
-        ctx.fill();
+        if (sprite.complete) {
+          ctx.drawImage(sprite, -spriteWidth / 2, -spriteHeight / 2, spriteWidth, spriteHeight);
+        }
 
         ctx.restore();
-      }
-
-      function varColor(name) {
-        return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
       }
 
       let previous = performance.now();
