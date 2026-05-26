@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Sky Dodger</title>
+    <title>SpaceCan</title>
     <style>
       :root {
         color-scheme: dark;
@@ -150,7 +150,7 @@
         <div class="hint">Space / tap to climb</div>
       </div>
       <div class="message" id="message">
-        <strong>Sky Dodger</strong>
+        <strong>SpaceCan</strong>
         <span>Press space to start, climb, and slip through the pillars.</span>
       </div>
     </main>
@@ -261,7 +261,7 @@
         healthEl.textContent = String(game.health);
         if (showMessage) {
           messageEl.classList.remove("hidden");
-          messageEl.querySelector("strong").textContent = "Sky Dodger";
+          messageEl.querySelector("strong").textContent = "SpaceCan";
           messageEl.querySelector("span").textContent = "Press space to start, climb, and slip through the pillars.";
         }
       }
