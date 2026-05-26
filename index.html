@@ -145,6 +145,8 @@
       <canvas id="game" aria-label="Side-scrolling pillar dodging game"></canvas>
       <div class="hud">
         <div class="score" id="score">0</div>
+        <div class="score" id="health">0</div>
+  
         <div class="hint">Space / tap to climb</div>
       </div>
       <div class="message" id="message">
@@ -157,6 +159,7 @@
       const canvas = document.querySelector("#game");
       const ctx = canvas.getContext("2d");
       const scoreEl = document.querySelector("#score");
+      const healthEl = document.querySelector("#health");
       const messageEl = document.querySelector("#message");
 
       const game = {
@@ -164,6 +167,7 @@
         height: 0,
         state: "ready",
         score: 0,
+        health: 3,
         best: Number(localStorage.getItem("skyDodgerBest") || 0),
         speed: 220,
         spawnTimer: 0,
@@ -219,6 +223,7 @@
       function reset(showMessage = true) {
         game.state = "ready";
         game.score = 0;
+        game.health = 3;
         game.speed = 220;
         game.spawnTimer = 0;
         game.pillars = [];
@@ -261,7 +266,8 @@
         game.pillars.push({
           x: game.width + pillarWidth,
           gapTop,
-          passed: false
+          passed: false,
+          hit: false
         });
       }
 
@@ -305,6 +311,7 @@
             scoreEl.textContent = String(game.score);
           }
         }
+        healthEl.textContent = String(game.health);
 
         game.pillars = game.pillars.filter((pillar) => pillar.x > -pillarWidth - 20);
         checkCollisions();
@@ -321,9 +328,14 @@
         for (const pillar of game.pillars) {
           const nearX = ship.x + ship.radius > pillar.x && ship.x - ship.radius < pillar.x + pillarWidth;
           const inGap = ship.y - ship.radius > pillar.gapTop && ship.y + ship.radius < pillar.gapTop + pillarGap;
-          if (nearX && !inGap) {
-          
-            
+          if (nearX && !inGap && !pillar.hit) {
+            pillar.hit = true;
+            game.health = game.health - 1;
+            healthEl.textContent = String(game.health);
+            if (game.health === 0) {
+              endGame();
+            }
+            return;
           }
         }
       }
